@@ -1,0 +1,472 @@
+---
+title: "random_forest_"
+author: Victor Chuol
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+# Potential packages to be used
+library(tidyverse)
+#library(arules)
+library(caret)
+#library(markdown)
+library(plyr)
+library(dplyr)
+library(rattle)
+#library(mdsr)
+library(mosaic)
+#library(mclust)
+#library(animation)
+#library(flexclust)
+library(shuffle)
+library(rpart)
+library(C50)
+library(stats)
+```
+
+```{r}
+rockData<- read.csv(file = '~/Documents/School Work/Machine Learning/projectdata/0.csv', stringsAsFactors = TRUE)
+
+scissorsData<- read.csv(file = '~/Documents/School Work/Machine Learning/projectdata/1.csv', stringsAsFactors = TRUE)
+
+paperData<- read.csv(file = '~/Documents/School Work/Machine Learning/projectdata/2.csv', stringsAsFactors = TRUE)
+
+okData<- read.csv(file = '~/Documents/School Work/Machine Learning/projectdata/3.csv', stringsAsFactors = TRUE)
+
+```
+
+
+```{r}
+# Rename the columns to show the corresponding sensor and time stamp
+names <- c("Sens1_0ms", "Sens2_0ms", "Sens3_0ms", "Sens4_0ms", "Sens5_0ms", "Sens6_0ms", "Sens7_0ms", "Sens8_0ms",
+           "Sens1_5ms", "Sens2_5ms", "Sens3_5ms", "Sens4_5ms", "Sens5_5ms", "Sens6_5ms", "Sens7_5ms", "Sens8_5ms",
+           "Sens1_10ms","Sens2_10ms","Sens3_10ms","Sens4_10ms","Sens5_10ms","Sens6_10ms","Sens7_10ms","Sens8_10ms",
+           "Sens1_15ms","Sens2_15ms","Sens3_15ms","Sens4_15ms","Sens5_15ms","Sens6_15ms","Sens7_15ms","Sens8_15ms",
+           "Sens1_20ms","Sens2_20ms","Sens3_20ms","Sens4_20ms","Sens5_20ms","Sens6_20ms","Sens7_20ms","Sens8_20ms",
+           "Sens1_25ms","Sens2_25ms","Sens3_25ms","Sens4_25ms","Sens5_25ms","Sens6_25ms","Sens7_25ms","Sens8_25ms",
+           "Sens1_30ms","Sens2_30ms","Sens3_30ms","Sens4_30ms","Sens5_30ms","Sens6_30ms","Sens7_30ms","Sens8_30ms",
+           "Sens1_35ms","Sens2_35ms","Sens3_35ms","Sens4_35ms","Sens5_35ms","Sens6_35ms","Sens7_35ms","Sens8_35ms",
+           "type")
+
+# Apply the new column names
+names(rockData) <- names
+names(scissorsData) <- names
+names(paperData) <- names
+names(okData) <- names
+```
+
+```{r}
+# Renumber the types so rock=1, scissors=2, paper=3, and ok=4
+rockData$type[rockData$type == "0"] <- "1"
+scissorsData$type[scissorsData$type == "1"] <- "2"
+paperData$type[paperData$type == "2"] <- "3"
+okData$type[okData$type == "3"] <- "4"
+```
+
+```{r}
+gestureData <- rbind(rockData,scissorsData,paperData,okData)
+#proccesing error handle
+shuffledData <- shuffle(gestureData)
+
+# Create the testing and training set
+dt = sort(sample(nrow(shuffledData), nrow(shuffledData)*.90))
+gesture_train <- shuffledData[dt,]
+gesture_test <- shuffledData[-dt,]
+
+#contains just orig.id and type
+#gesture_train_no_type <- select(gesture_train,-type,-orig.id)
+#head(gesture_train_no_type,3)
+
+gesture_test_no_type <- select(gesture_train,-type,-orig.id)
+
+```
+
+```{r TOTAL DATA CREATION}
+#consolidate data into total
+tot_gestureData <- gestureData %>% 
+  mutate(
+    TotSens1 = (Sens1_0ms+Sens1_5ms+Sens1_10ms+Sens1_15ms+Sens1_20ms+Sens1_25ms+Sens1_30ms+Sens1_35ms),
+    TotSens2 = (Sens2_0ms+Sens2_5ms+Sens2_10ms+Sens2_15ms+Sens2_20ms+Sens2_25ms+Sens2_30ms+Sens2_35ms),
+    TotSens3 = (Sens3_0ms+Sens3_5ms+Sens3_10ms+Sens3_15ms+Sens3_20ms+Sens3_25ms+Sens3_30ms+Sens3_35ms),
+    TotSens4 = (Sens4_0ms+Sens4_5ms+Sens4_10ms+Sens4_15ms+Sens4_20ms+Sens4_25ms+Sens4_30ms+Sens4_35ms),
+    TotSens5 = (Sens5_0ms+Sens5_5ms+Sens5_10ms+Sens5_15ms+Sens5_20ms+Sens5_25ms+Sens5_30ms+Sens5_35ms),
+    TotSens6 = (Sens6_0ms+Sens6_5ms+Sens6_10ms+Sens6_15ms+Sens6_20ms+Sens6_25ms+Sens6_30ms+Sens6_35ms),
+    TotSens7 = (Sens7_0ms+Sens7_5ms+Sens7_10ms+Sens7_15ms+Sens7_20ms+Sens7_25ms+Sens7_30ms+Sens7_35ms),
+    TotSens8 = (Sens8_0ms+Sens8_5ms+Sens8_10ms+Sens8_15ms+Sens8_20ms+Sens8_25ms+Sens8_30ms+Sens8_35ms),
+  ) %>% 
+  select(TotSens1,TotSens2,TotSens3,TotSens4,TotSens5,TotSens6,TotSens7,TotSens8,type)
+
+```
+
+```{r TOTAL TRAIN/TEST CREATION}
+#create tot data / shuffle test 
+shuffle_tot_data <- shuffle(tot_gestureData)
+
+
+dt2 = sort(sample(nrow(shuffle_tot_data), nrow(shuffle_tot_data)*.70))
+gesture_tot_train <- shuffle_tot_data[dt2,]
+gesture_tot_test <- shuffle_tot_data[-dt2,]
+
+gesture_tot_test <- select(gesture_tot_test,-orig.id)
+gesture_tot_train <- select(gesture_tot_train,-orig.id)
+gesture_tot_train_notype <- select(gesture_tot_train,-type)
+
+
+gesture_tot_test_notype <- select(gesture_tot_test,-type)
+
+```
+
+```{r COMBINED DATA CREATION}
+#Split each individual row into 8 new rows based on time. Since each row contains 64 readings from 8 sensors over 40ms, split them on their 5ms intervals so a new row is made for 0ms, 5ms, etc. Do this for all rows in the data set
+
+data0ms <- gestureData %>% 
+  select(Sens1_0ms, Sens2_0ms, Sens3_0ms, Sens4_0ms, Sens5_0ms, Sens6_0ms, Sens7_0ms, Sens8_0ms, type) %>%
+  rename(replace = c("Sens1_0ms" = "Sens1", "Sens2_0ms" = "Sens2","Sens3_0ms" = "Sens3","Sens4_0ms" = "Sens4","Sens5_0ms" = "Sens5","Sens6_0ms" = "Sens6","Sens7_0ms" = "Sens7", "Sens8_0ms" = "Sens8" ))
+
+data5ms <- gestureData %>% 
+  select(Sens1_5ms, Sens2_5ms, Sens3_5ms, Sens4_5ms, Sens5_5ms, Sens6_5ms, Sens7_5ms, Sens8_5ms, type) %>%
+  rename(replace = c("Sens1_5ms" = "Sens1", "Sens2_5ms" = "Sens2","Sens3_5ms" = "Sens3","Sens4_5ms" = "Sens4","Sens5_5ms" = "Sens5","Sens6_5ms" = "Sens6","Sens7_5ms" = "Sens7", "Sens8_5ms" = "Sens8" ))
+
+data10ms <- gestureData %>%
+  select(Sens1_10ms, Sens2_10ms, Sens3_10ms, Sens4_10ms, Sens5_10ms, Sens6_10ms, Sens7_10ms, Sens8_10ms, type) %>% 
+  rename(replace = c("Sens1_10ms" = "Sens1", "Sens2_10ms" = "Sens2","Sens3_10ms" = "Sens3","Sens4_10ms" = "Sens4","Sens5_10ms" = "Sens5","Sens6_10ms" = "Sens6","Sens7_10ms" = "Sens7", "Sens8_10ms" = "Sens8" ))
+
+data15ms <- gestureData %>% 
+  select(Sens1_15ms, Sens2_15ms, Sens3_15ms, Sens4_15ms, Sens5_15ms, Sens6_15ms, Sens7_15ms, Sens8_15ms, type) %>% 
+  rename(replace = c("Sens1_15ms" = "Sens1", "Sens2_15ms" = "Sens2","Sens3_15ms" = "Sens3","Sens4_15ms" = "Sens4","Sens5_15ms" = "Sens5","Sens6_15ms" = "Sens6","Sens7_15ms" = "Sens7", "Sens8_15ms" = "Sens8" ))
+
+data20ms <- gestureData %>%
+  select(Sens1_20ms, Sens2_20ms, Sens3_20ms, Sens4_20ms, Sens5_20ms, Sens6_20ms, Sens7_20ms, Sens8_20ms, type) %>%
+  rename(replace = c("Sens1_20ms" = "Sens1", "Sens2_20ms" = "Sens2","Sens3_20ms" = "Sens3","Sens4_20ms" = "Sens4","Sens5_20ms" = "Sens5","Sens6_20ms" = "Sens6","Sens7_20ms" = "Sens7", "Sens8_20ms" = "Sens8" ))
+
+data25ms <- gestureData %>% 
+  select(Sens1_25ms, Sens2_25ms, Sens3_25ms, Sens4_25ms, Sens5_25ms, Sens6_25ms, Sens7_25ms, Sens8_25ms, type) %>% 
+  rename(replace = c("Sens1_25ms" = "Sens1", "Sens2_25ms" = "Sens2","Sens3_25ms" = "Sens3","Sens4_25ms" = "Sens4","Sens5_25ms" = "Sens5","Sens6_25ms" = "Sens6","Sens7_25ms" = "Sens7", "Sens8_25ms" = "Sens8" ))
+
+data30ms <- gestureData %>%
+  select(Sens1_30ms, Sens2_30ms, Sens3_30ms, Sens4_30ms, Sens5_30ms, Sens6_30ms, Sens7_30ms, Sens8_30ms, type) %>%
+  rename(replace = c("Sens1_30ms" = "Sens1", "Sens2_30ms" = "Sens2","Sens3_30ms" = "Sens3","Sens4_30ms" = "Sens4","Sens5_30ms" = "Sens5","Sens6_30ms" = "Sens6","Sens7_30ms" = "Sens7", "Sens8_30ms" = "Sens8" ))
+
+data35ms <- gestureData %>%
+  select(Sens1_35ms, Sens2_35ms, Sens3_35ms, Sens4_35ms, Sens5_35ms, Sens6_35ms, Sens7_35ms, Sens8_35ms, type) %>% 
+  rename(replace = c("Sens1_35ms" = "Sens1", "Sens2_35ms" = "Sens2","Sens3_35ms" = "Sens3","Sens4_35ms" = "Sens4","Sens5_35ms" = "Sens5","Sens6_35ms" = "Sens6","Sens7_35ms" = "Sens7", "Sens8_35ms" = "Sens8" ))
+
+gestureDataCombined <- rbind(data0ms, data5ms, data10ms, data15ms, data20ms, data25ms, data30ms, data35ms)
+
+```
+
+```{r COMBINED TRAIN/TEST CREATION}
+## Creating training and testing sets out of spread gesture set```{r}
+# Set the seed so this can be reproducible
+set.seed(48)
+
+# Shuffle the gesture data before taking training and testing subsets
+shuffledData2 <- shuffle(gestureDataCombined)
+
+# Create the testing and training set
+dt2 = sort(sample(nrow(shuffledData2), nrow(shuffledData2)*.90))
+gest_combine_train <- shuffledData2[dt2,]
+gest_combine_test <- shuffledData2[-dt2,]
+
+# Remove the columns denoting the known classification and prior row ID in the training set before creating a model
+gest_combine_train_no_type <- gest_combine_train %>% select(-type, -orig.id)
+
+# Remove the original id from the training set that still has type in it
+gest_combine_train <- gest_combine_train %>% select(-orig.id)
+
+# Remove the type from the test set
+gest_combine_test_no_type <- gest_combine_test %>% select(-type)
+```
+
+## Creating a new gesture set containing the averages among each of the 8 sensors so there are now only 8 attributes for each of the sensors
+```{r AVG DATA CREATION}
+Avg_gestureData <- gestureData %>% 
+  mutate(
+    AvgSens1 = (Sens1_0ms+Sens1_5ms+Sens1_10ms+Sens1_15ms+Sens1_20ms+Sens1_25ms+Sens1_30ms+Sens1_35ms)/8,
+    AvgSens2 = (Sens2_0ms+Sens2_5ms+Sens2_10ms+Sens2_15ms+Sens2_20ms+Sens2_25ms+Sens2_30ms+Sens2_35ms)/8,
+    AvgSens3 = (Sens3_0ms+Sens3_5ms+Sens3_10ms+Sens3_15ms+Sens3_20ms+Sens3_25ms+Sens3_30ms+Sens3_35ms)/8,
+    AvgSens4 = (Sens4_0ms+Sens4_5ms+Sens4_10ms+Sens4_15ms+Sens4_20ms+Sens4_25ms+Sens4_30ms+Sens4_35ms)/8,
+    AvgSens5 = (Sens5_0ms+Sens5_5ms+Sens5_10ms+Sens5_15ms+Sens5_20ms+Sens5_25ms+Sens5_30ms+Sens5_35ms)/8,
+    AvgSens6 = (Sens6_0ms+Sens6_5ms+Sens6_10ms+Sens6_15ms+Sens6_20ms+Sens6_25ms+Sens6_30ms+Sens6_35ms)/8,
+    AvgSens7 = (Sens7_0ms+Sens7_5ms+Sens7_10ms+Sens7_15ms+Sens7_20ms+Sens7_25ms+Sens7_30ms+Sens7_35ms)/8,
+    AvgSens8 = (Sens8_0ms+Sens8_5ms+Sens8_10ms+Sens8_15ms+Sens8_20ms+Sens8_25ms+Sens8_30ms+Sens8_35ms)/8,
+  ) %>% 
+  select(AvgSens1,AvgSens2,AvgSens3,AvgSens4,AvgSens5,AvgSens6,AvgSens7,AvgSens8,type)
+```
+
+## Creating training and testing sets out of averaged gesture set
+```{r AVG DATA TRAIN/TEST CREATION}
+set.seed(48)
+
+# Shuffle the gesture data before taking training and testing subsets
+Avg_shuffledData <- shuffle(Avg_gestureData)
+
+# Create the testing and training set
+#dt2 = sort(sample(nrow(Avg_shuffledData), nrow(Avg_shuffledData)*.90))
+dt1 = sort(sample(nrow(Avg_shuffledData), nrow(Avg_shuffledData)*.70))
+
+avg_gesture_train <- Avg_shuffledData[dt1,]
+avg_gesture_test <- Avg_shuffledData[-dt1,]
+
+# Remove the columns denoting the know classification and prior row ID before creating a model
+avg_gesture_train_no_type <- avg_gesture_train %>% 
+  select(-type, -orig.id)
+avg_gesture_test_no_type <- avg_gesture_test %>% 
+  select(-type, -orig.id)
+```
+
+
+```{r GET_FIT FUNCTION}
+#RETURNS RPART OR C.50 FIT
+getfit <- function(new_formula,data,type){
+  #Rpart Tree
+  if(type==0){
+    formula.fit <- train(new_formula, 
+                         data = data,
+                         method = "rpart2"
+    )
+  }
+  
+  #C5.0 Tree
+  if(type == 1){
+    formula.fit<-C5.0(new_formula,data,type="class")
+  }
+  return(formula.fit)  
+}
+
+```
+
+```{r GET_FORMULA FUNCTION}
+#RETURNS A FORMULA W/ RANDOM SELECTION OF FEATURES
+getformula <- function(n.feat,features,targetft,random){
+  
+  #set number of features to use 
+  feature_m <- 6
+  
+  #random feature selection 
+  
+  if(random==0){
+      #random reduce # selection
+      reduce <- runif(1,0.45,1)
+      #random # of features implementation 
+      sample_features <- sample(features, size = (floor(n.feat) * reduce),replace =F)
+  }
+  #static # of features
+  if(random==1){
+      sample_features <- sample(features, size = (feature_m),replace =F)
+  }
+
+  #format selected features 
+  new_formula <- as.formula(paste0(targetft, " ~ ", paste0(sample_features, collapse =  " + ")))
+  
+  #tracks completion of function
+  print(new_formula)
+  
+  return (new_formula)
+}
+
+```
+
+```{r BIND PREDICTIONS TABLE}
+#BINDS MULTIPLE DECISION TREES
+bind_predictions <- function(num_predict,test,trees){
+  
+  list <- vector(mode = "list", length = num_predict)
+  
+    for (i in 1:num_predict){
+      predict.tree <- predict(trees[[i]],test)
+      list[[i]] <- predict.tree
+    }
+
+  return(list)
+}
+```
+
+```{r GET N TREES FUNCTION}
+get_n_trees <- function(ntrees,train_set,nsamples,features,targetft,type,random){
+  
+  list <- vector(mode = "list", length = ntrees)
+  
+  for(i in 1:ntrees){
+    train <-sample(train_set,nsamples)
+      
+      if(missing(random)){
+          random <- 1
+      }
+    test_formula <- getformula(8,features = features,targetft=targetft,random)
+      
+    new_fit <- getfit(test_formula,train,type)
+    list[[i]] <- new_fit
+    
+  }
+  
+  return(list)
+}
+```
+
+
+
+```{r GETMEAN FUNCTION}
+get_mean<-function(prediction_list){
+  col=1
+  dataFrame <- c()
+  means <- c()
+
+    for(col in 1:length(prediction_list[[1]])){
+    
+        for(row in 1:npredictions){
+            dataFrame <- c(dataFrame,prediction_list[[row]][col])
+            }
+    mean_ <- mean(dataFrame)
+    means <- c(means,rndUp(mean_))
+    dataFrame <- c()
+    
+  }
+  means <- as.data.frame(means)
+  return(means)
+}
+
+
+```
+
+```{r ROUND UP HELPER FUNCTION}
+#rounding up from .5
+rndUp <- function(x) trunc(x+sign(x)*0.5)
+```
+
+
+```{r CREATE FORMULA}
+formula_combine <- type ~ Sens1+Sens2+Sens3+Sens4+
+  Sens5 + Sens6 + Sens7 + Sens8
+
+formula_total <- type ~ TotSens1+TotSens2+TotSens3+TotSens4+
+  TotSens5 + TotSens6 + TotSens7 + TotSens8
+
+formula_avg <- type ~ AvgSens1+AvgSens2+AvgSens3+AvgSens4+AvgSens5+
+  AvgSens6+AvgSens7+AvgSens8
+
+```
+
+```{r CREATE FEATURES FOR TABLE}
+features_t <- all.vars(formula_total)[-1]
+targetft_t <- all.vars(formula_total)[1] 
+
+features_a <- all.vars(formula_avg)[-1]
+targetft_a <- all.vars(formula_avg)[1] 
+
+
+features <- all.vars(formula_combine)[-1]
+targetft <- all.vars(formula_combine)[1] 
+
+```
+
+```{r SET NPREDICTIONS}
+#type = 1 --> C5.0 : type = 0 --> Rpart 
+npredictions = 3
+nsamples = 2000
+```
+
+
+
+```{r CREATE SPREAD N TREES}
+#SPREAD DATA
+
+#required for C5.0
+gest_combine_train$type <- as.factor(gest_combine_train$type)
+
+
+test_trees_rpart<- get_n_trees(npredictions,gest_combine_train,nsamples,features,targetft,type=0,random=1)
+test_trees_c50<- get_n_trees(npredictions,gest_combine_train,nsamples,features,targetft,type=1)
+
+#get n trees uses get_tree
+
+#TOTALED DATA
+#required for C5.0
+gesture_tot_train$type<-as.factor(gesture_tot_train$type)
+
+test_trees_rpart_t<- get_n_trees(npredictions,gesture_tot_train,nsamples,features_t,targetft_t,type=0)
+test_trees_c50_t<- get_n_trees(npredictions,gesture_tot_train,nsamples,features_t,targetft_t,type=1)
+
+
+#AVERAGED DATA '
+#required for C5.0
+avg_gesture_train$type<-as.factor(avg_gesture_train$type)
+
+test_trees_rpart_a<- get_n_trees(npredictions,avg_gesture_train,nsamples,features_a,targetft_a,type=0)
+test_trees_c50_a<- get_n_trees(npredictions,avg_gesture_train,nsamples,features_a,targetft_a,type=1)
+
+```
+
+```{r VISUZA VISUALIZING RPART TREES}
+fancyRpartPlot(test_trees_rpart[[1]]$finalModel,sub="Tree #3",main = "RPART TREE")
+```
+
+```{r BINDS DECISION TREE PREDICTIONS INTO TABLE}
+#SPREAD DATA
+prediction_list_rpart <- bind_predictions(npredictions,test=head(gest_combine_test_no_type,nsamples),test_trees_rpart)
+
+prediction_list_c50 <- bind_predictions(npredictions,test=head(gest_combine_test_no_type,nsamples),test_trees_c50)
+
+#TOTALED DATA
+#returns multiple decision tree predictions in one data frame
+prediction_list_rpart_t <- bind_predictions(npredictions,test=head(gesture_tot_test_notype,nsamples),test_trees_rpart_t)
+prediction_list_c50_t <- bind_predictions(npredictions,test=head(gesture_tot_test_notype,nsamples),test_trees_c50_t)
+
+#average DATA
+prediction_list_rpart_a <- bind_predictions(npredictions,test=head(avg_gesture_test_no_type,nsamples),test_trees_rpart_a)
+prediction_list_c50_a <- bind_predictions(npredictions,test=head(avg_gesture_test_no_type,nsamples),test_trees_c50_a)
+
+```
+
+```{r CREATE 1 TABLE OF MEAN VALUES}
+#SPREAD DATA
+means_tbl_rpart<-get_mean(prediction_list_rpart)
+means_tbl_c50<-get_mean(prediction_list_c50)
+
+#Totaled DATA
+means_tbl_rpart_t<-get_mean(prediction_list_rpart_t)
+means_tbl_c50_t<-get_mean(prediction_list_c50_t)
+
+#AVG DATA
+means_tbl_rpart_a<-get_mean(prediction_list_rpart_a)
+means_tbl_c50_a<-get_mean(prediction_list_c50_a)
+```
+
+
+```{r ERROR RATE CALCULATION}
+#spread data
+print("SPREAD DATA:")
+error.rate_rpart = round(mean(head(gest_combine_test$type,nsamples) !=  means_tbl_rpart$means),2)
+error.rate_c50 = round(mean(head(gest_combine_test$type,nsamples) !=  means_tbl_c50$means),2)
+
+print("SPREAD ERROR RATE: ")
+error.rate_rpart
+error.rate_c50
+
+
+#Totaled data
+error.rate_rpart_t = round(mean(head(gesture_tot_test$type,nsamples) !=  means_tbl_rpart$means),2)
+error.rate_c50_t = round(mean(head(gesture_tot_test$type,nsamples) !=  means_tbl_c50$means),2)
+
+
+print("TOTALED ERROR RATE: ")
+error.rate_rpart_t
+error.rate_c50_t
+print(" ")
+
+#average data
+error.rate_rpart_a = round(mean(head(avg_gesture_test$type,nsamples) !=  means_tbl_rpart_a$means),2)
+error.rate_c50_a = round(mean(head(avg_gesture_test$type,nsamples) !=  means_tbl_c50_a$means),2)
+
+
+print("AVG ERROR RATE: ")
+error.rate_rpart_a
+error.rate_c50_a
+```
+
